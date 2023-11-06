@@ -5,11 +5,20 @@ import mediapipe as mp
 import streamlit as st
 from PIL import Image
 
+DESIRED_HEIGHT = 360
+DESIRED_WIDTH = 360
 
-DESIRED_HEIGHT = 480
-DESIRED_WIDTH = 480
+# Загрузка и отображение изображений объекта и фона
+def display_images():
+    st.write("1. Загрузите изображение объекта (например, человека):")
+    obj_image = st.file_uploader("Загрузите объект", type=["jpg", "png"])
 
+    st.write("2. Загрузите изображение фона:")
+    bg_image = st.file_uploader("Загрузите фон", type=["jpg", "png"])
 
+    return obj_image, bg_image
+
+# Функция для изменения размера и отображения изображения
 def resize_and_show(image):
     height, weight = image.shape[:2]
     if height < weight:
@@ -21,41 +30,42 @@ def resize_and_show(image):
             image, (math.floor(weight / (height / DESIRED_HEIGHT)), DESIRED_HEIGHT)
         )
 
-    cv2.imshow("img", img)
-
-    cv2.waitKey(0)
-
-    cv2.destroyAllWindows()
-
+    st.image(img, use_column_width=True)
 
 mp_selfie_segmentation = mp.solutions.selfie_segmentation
 
-# Blur the image background based on the segementation mask.
-with mp_selfie_segmentation.SelfieSegmentation() as selfie_segmentation:
-    # Convert the BGR image to RGB and process it with MediaPipe Selfie Segmentation.
-    try:
-        files = st.file_uploader(
-            "Upload images", type=["jpg", "png"], accept_multiple_files=True
-        )
+# Основная часть Streamlit приложения
+def main():
+    st.title("Сегментация объекта и замена фона")
+    st.write("Загрузите изображение объекта и фона, чтобы выполнить сегментацию и замену фона.")
 
-        for file in files:
-            image = Image.open(file)
-            st.image(image)
+    obj_image, bg_image = display_images()
 
-        files_path = list(map(lambda file: file.name, files))
-        # Сначала загружаем объект, затем фон
-        obj_image = cv2.imread("datasets/" + files_path[0])
-        bg_image = cv2.imread("backgrounds/" + files_path[1])
+    if obj_image is not None and bg_image is not None:
+        with mp_selfie_segmentation.SelfieSegmentation() as selfie_segmentation:
+            try:
+                obj_image = Image.open(obj_image)
+                bg_image = Image.open(bg_image)
 
-        results = selfie_segmentation.process(
-            cv2.cvtColor(obj_image, cv2.COLOR_BGR2RGB)
-        )
+                st.write("Исходное изображение объекта:")
+                st.image(obj_image)
 
-        condition = np.stack((results.segmentation_mask,) * 3, axis=-1) > 0.1
-        output_image = np.where(condition, obj_image, bg_image)
+                st.write("Исходное изображение фона:")
+                st.image(bg_image)
 
-        # resize_and_show(output_image)
-        st.image(output_image)
+                results = selfie_segmentation.process(
+                    cv2.cvtColor(np.array(obj_image), cv2.COLOR_RGB2BGR)
+                )
 
-    except IndexError:
-        pass
+                condition = np.stack((results.segmentation_mask,) * 3, axis=-1) > 0.1
+                output_image = np.where(condition, np.array(obj_image), np.array(bg_image))
+
+                st.write("Результат сегментации и замены фона:")
+                st.image(output_image, use_column_width=True)
+
+            except Exception as e:
+                st.error("Произошла ошибка: " + str(e))
+
+if __name__ == "__main__":
+    main()
+
